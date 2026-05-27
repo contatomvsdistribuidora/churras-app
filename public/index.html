@@ -1,0 +1,1369 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>🔥 Divide o Churras</title>
+
+<!-- PWA -->
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#1a1a2e">
+<meta name="description" content="Sistema para dividir contas de churrasco com os amigos">
+
+<!-- iOS / Safari -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Churras">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+
+<!-- Favicon -->
+<link rel="icon" type="image/png" href="/favicon.png">
+<link rel="icon" type="image/svg+xml" href="/icon.svg">
+
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+    min-height: 100vh;
+    color: #fff;
+    padding: 16px;
+    /* Safe areas iOS (notch) */
+    padding-top: max(16px, env(safe-area-inset-top));
+    padding-bottom: max(16px, env(safe-area-inset-bottom));
+    padding-left: max(16px, env(safe-area-inset-left));
+    padding-right: max(16px, env(safe-area-inset-right));
+  }
+
+  /* Banner de instalação PWA */
+  .install-banner {
+    display: none;
+    position: fixed;
+    bottom: 16px;
+    left: 16px;
+    right: 16px;
+    background: linear-gradient(135deg, #ff6b35, #f7b801);
+    color: #1a1a2e;
+    padding: 14px 16px;
+    border-radius: 14px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    z-index: 200;
+    align-items: center;
+    gap: 12px;
+    max-width: 500px;
+    margin: 0 auto;
+  }
+  .install-banner.show { display: flex; }
+  .install-banner-icon { font-size: 1.8em; }
+  .install-banner-content { flex: 1; }
+  .install-banner-title { font-weight: 700; font-size: 0.95em; }
+  .install-banner-desc { font-size: 0.78em; opacity: 0.85; }
+  .install-banner button {
+    background: #1a1a2e;
+    color: #fff;
+    border: none;
+    padding: 8px 14px;
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+    font-size: 0.85em;
+  }
+  .install-banner-close {
+    background: transparent !important;
+    color: #1a1a2e !important;
+    padding: 4px 8px !important;
+    font-size: 1.2em !important;
+  }
+  .container { max-width: 1100px; margin: 0 auto; }
+  header {
+    text-align: center;
+    padding: 20px 0 30px;
+  }
+  header h1 {
+    font-size: 2.2em;
+    background: linear-gradient(45deg, #ff6b35, #f7b801, #ff6b35);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: 6px;
+  }
+  header p { color: #a0aec0; font-size: 0.95em; }
+
+  .tabs {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 20px;
+    background: rgba(255,255,255,0.05);
+    padding: 6px;
+    border-radius: 12px;
+    overflow-x: auto;
+  }
+  .tab {
+    flex: 1;
+    min-width: 90px;
+    padding: 10px 14px;
+    background: transparent;
+    border: none;
+    color: #a0aec0;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 0.85em;
+    transition: all 0.2s;
+    white-space: nowrap;
+  }
+  .tab.active {
+    background: linear-gradient(45deg, #ff6b35, #f7b801);
+    color: #1a1a2e;
+  }
+  .tab:hover:not(.active) { background: rgba(255,255,255,0.08); }
+
+  .card {
+    background: rgba(255,255,255,0.06);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 16px;
+    padding: 20px;
+    margin-bottom: 16px;
+  }
+  .card h2 {
+    font-size: 1.2em;
+    margin-bottom: 14px;
+    color: #f7b801;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .form-row {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+  @media(min-width: 600px) {
+    .form-row.two { grid-template-columns: 1fr 1fr; }
+    .form-row.three { grid-template-columns: 2fr 1fr 1fr; }
+  }
+  input, select, textarea {
+    width: 100%;
+    padding: 11px 14px;
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 10px;
+    color: #fff;
+    font-size: 0.95em;
+    font-family: inherit;
+  }
+  input:focus, select:focus, textarea:focus {
+    outline: none;
+    border-color: #f7b801;
+    background: rgba(255,255,255,0.12);
+  }
+  input::placeholder, textarea::placeholder { color: #6b7280; }
+  select option { background: #1a1a2e; }
+
+  .btn {
+    padding: 11px 18px;
+    border: none;
+    border-radius: 10px;
+    font-weight: 600;
+    cursor: pointer;
+    font-size: 0.92em;
+    transition: all 0.2s;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    justify-content: center;
+  }
+  .btn-primary {
+    background: linear-gradient(45deg, #ff6b35, #f7b801);
+    color: #1a1a2e;
+  }
+  .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(247,184,1,0.3); }
+  .btn-success { background: #10b981; color: #fff; }
+  .btn-success:hover { background: #059669; }
+  .btn-danger { background: rgba(239,68,68,0.2); color: #fca5a5; border: 1px solid rgba(239,68,68,0.3); }
+  .btn-danger:hover { background: rgba(239,68,68,0.3); }
+  .btn-whatsapp { background: #25d366; color: #fff; }
+  .btn-whatsapp:hover { background: #1eb955; }
+  .btn-small { padding: 6px 10px; font-size: 0.8em; }
+
+  .people-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 12px;
+  }
+  .person-card {
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 12px;
+    padding: 14px;
+    text-align: center;
+    position: relative;
+  }
+  .person-avatar {
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #ff6b35, #f7b801);
+    margin: 0 auto 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.6em;
+    font-weight: bold;
+    color: #fff;
+    overflow: hidden;
+  }
+  .person-avatar img { width: 100%; height: 100%; object-fit: cover; }
+
+  .avatar-inline {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    object-fit: cover;
+    vertical-align: middle;
+    border: 1px solid rgba(255,255,255,0.2);
+  }
+  .avatar-inline-mini {
+    display: inline-flex;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.75em;
+    font-weight: bold;
+    color: #fff;
+    vertical-align: middle;
+  }
+  .person-name { font-weight: 600; font-size: 0.95em; margin-bottom: 4px; }
+  .person-phone { font-size: 0.75em; color: #a0aec0; margin-bottom: 8px; }
+  .person-debt {
+    font-size: 0.78em;
+    padding: 4px 8px;
+    border-radius: 6px;
+    margin-bottom: 8px;
+    display: inline-block;
+  }
+  .person-debt.has-debt { background: rgba(239,68,68,0.2); color: #fca5a5; }
+  .person-debt.no-debt { background: rgba(16,185,129,0.2); color: #6ee7b7; }
+  .remove-btn {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    background: rgba(239,68,68,0.2);
+    border: none;
+    color: #fca5a5;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    cursor: pointer;
+    font-size: 0.8em;
+  }
+
+  .item-list { display: flex; flex-direction: column; gap: 10px; }
+  .item {
+    background: rgba(255,255,255,0.05);
+    border-radius: 10px;
+    padding: 12px 14px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .item-info { flex: 1; min-width: 200px; }
+  .item-name { font-weight: 600; margin-bottom: 3px; }
+  .item-meta { font-size: 0.8em; color: #a0aec0; }
+  .item-value { font-weight: 700; color: #f7b801; font-size: 1.05em; }
+
+  .empty {
+    text-align: center;
+    padding: 30px 20px;
+    color: #6b7280;
+    font-size: 0.9em;
+  }
+  .empty-icon { font-size: 2.5em; margin-bottom: 8px; opacity: 0.5; }
+
+  .summary-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+  .summary-box {
+    background: rgba(255,255,255,0.05);
+    border-radius: 10px;
+    padding: 14px;
+    text-align: center;
+  }
+  .summary-label { font-size: 0.78em; color: #a0aec0; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .summary-value { font-size: 1.4em; font-weight: 700; color: #f7b801; }
+
+  .balance-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px;
+    background: rgba(255,255,255,0.04);
+    border-radius: 10px;
+    margin-bottom: 8px;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .balance-info { flex: 1; min-width: 180px; }
+  .balance-name { font-weight: 600; margin-bottom: 4px; }
+  .balance-detail { font-size: 0.8em; color: #a0aec0; }
+  .balance-amount {
+    font-weight: 700;
+    font-size: 1.1em;
+    padding: 6px 12px;
+    border-radius: 8px;
+  }
+  .owes { background: rgba(239,68,68,0.2); color: #fca5a5; }
+  .receives { background: rgba(16,185,129,0.2); color: #6ee7b7; }
+  .balance-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+
+  .status-badge {
+    display: inline-block;
+    padding: 3px 8px;
+    border-radius: 5px;
+    font-size: 0.72em;
+    font-weight: 600;
+    margin-left: 6px;
+  }
+  .status-pending { background: rgba(247,184,1,0.2); color: #f7b801; }
+  .status-paid { background: rgba(16,185,129,0.2); color: #6ee7b7; }
+
+  .modal {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.7);
+    backdrop-filter: blur(4px);
+    z-index: 100;
+    padding: 16px;
+    align-items: center;
+    justify-content: center;
+  }
+  .modal.active { display: flex; }
+  .modal-content {
+    background: #1a1a2e;
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 16px;
+    padding: 24px;
+    max-width: 500px;
+    width: 100%;
+    max-height: 90vh;
+    overflow-y: auto;
+  }
+  .modal h3 { margin-bottom: 16px; color: #f7b801; }
+  .modal-actions { display: flex; gap: 10px; margin-top: 16px; justify-content: flex-end; }
+
+  .receipt-img {
+    max-width: 100%;
+    border-radius: 10px;
+    margin-top: 10px;
+    border: 1px solid rgba(255,255,255,0.1);
+  }
+
+  .churras-card {
+    background: rgba(255,255,255,0.05);
+    border-radius: 12px;
+    padding: 14px;
+    margin-bottom: 10px;
+    cursor: pointer;
+    transition: all 0.2s;
+    border: 1px solid transparent;
+  }
+  .churras-card:hover { border-color: rgba(247,184,1,0.3); }
+  .churras-card.active { border-color: #f7b801; background: rgba(247,184,1,0.08); }
+  .churras-header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; flex-wrap: wrap; gap: 8px; }
+  .churras-title { font-weight: 700; font-size: 1.05em; }
+  .churras-date { font-size: 0.8em; color: #a0aec0; }
+
+  .alert {
+    padding: 12px 14px;
+    border-radius: 10px;
+    margin-bottom: 14px;
+    font-size: 0.9em;
+  }
+  .alert-info { background: rgba(59,130,246,0.15); border: 1px solid rgba(59,130,246,0.3); color: #93c5fd; }
+  .alert-warn { background: rgba(247,184,1,0.15); border: 1px solid rgba(247,184,1,0.3); color: #fde68a; }
+
+  .checkbox-group {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 8px;
+    margin-top: 8px;
+  }
+  .checkbox-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(255,255,255,0.05);
+    padding: 8px 10px;
+    border-radius: 8px;
+    cursor: pointer;
+  }
+  .checkbox-item input { width: auto; }
+
+  .loading { text-align: center; padding: 30px; color: #a0aec0; }
+  .label { font-size: 0.82em; color: #a0aec0; margin-bottom: 4px; display: block; }
+  .hint { font-size: 0.82em; color: #a0aec0; margin-bottom: 8px; }
+
+  .avatar-tabs {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+  }
+  .avatar-tab {
+    flex: 1;
+    min-width: 80px;
+    padding: 8px 10px;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.1);
+    color: #a0aec0;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 0.82em;
+    transition: all 0.2s;
+  }
+  .avatar-tab.active {
+    background: rgba(247,184,1,0.2);
+    border-color: #f7b801;
+    color: #f7b801;
+  }
+  .avatar-panel { display: none; padding: 12px; background: rgba(0,0,0,0.2); border-radius: 10px; }
+  .avatar-panel.active { display: block; }
+
+  .avatar-preview-circle {
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    margin: 8px auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 2em;
+    font-weight: bold;
+    color: #fff;
+    background: linear-gradient(135deg, #ff6b35, #f7b801);
+    overflow: hidden;
+  }
+  .avatar-preview-circle img { width: 100%; height: 100%; object-fit: cover; }
+
+  .photo-preview-box {
+    margin-top: 10px;
+    text-align: center;
+  }
+  .photo-preview-box img {
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 2px solid rgba(247,184,1,0.3);
+  }
+
+  .btn-secondary { background: rgba(255,255,255,0.1); color: #fff; }
+  .btn-secondary:hover { background: rgba(255,255,255,0.15); }
+
+  .emoji-suggestions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 10px;
+  }
+  .emoji-btn {
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 8px;
+    padding: 6px 10px;
+    font-size: 1.2em;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .emoji-btn:hover { background: rgba(247,184,1,0.15); border-color: #f7b801; }
+</style>
+</head>
+<body>
+
+<!-- Banner de instalação PWA -->
+<div id="installBanner" class="install-banner">
+  <div class="install-banner-icon">📱</div>
+  <div class="install-banner-content">
+    <div class="install-banner-title">Instalar app</div>
+    <div class="install-banner-desc">Adiciona o Divide o Churras na sua tela inicial</div>
+  </div>
+  <button id="installBtn">Instalar</button>
+  <button class="install-banner-close" onclick="fecharBannerInstalacao()">×</button>
+</div>
+
+<!-- Banner instruções iOS (Safari não tem prompt automático) -->
+<div id="iosBanner" class="install-banner">
+  <div class="install-banner-icon">📱</div>
+  <div class="install-banner-content">
+    <div class="install-banner-title">Instalar no iPhone</div>
+    <div class="install-banner-desc">Toque em <strong>Compartilhar</strong> ↗ → <strong>Adicionar à Tela de Início</strong></div>
+  </div>
+  <button class="install-banner-close" onclick="fecharBannerInstalacao()">×</button>
+</div>
+
+<div class="container">
+  <header>
+    <h1>🔥 Divide o Churras</h1>
+    <p>Quem comprou, quem comeu — todo mundo paga sua parte</p>
+    <p id="connStatus" style="font-size:0.8em; margin-top:6px;">🔄 Conectando...</p>
+  </header>
+
+  <div class="tabs">
+    <button class="tab active" data-tab="churras">🍖 Churras</button>
+    <button class="tab" data-tab="pessoas">👥 Pessoas</button>
+    <button class="tab" data-tab="gastos">💰 Gastos</button>
+    <button class="tab" data-tab="resumo">📊 Resumo</button>
+    <button class="tab" data-tab="historico">📅 Histórico</button>
+  </div>
+
+  <!-- Tab: Churras (selecionar/criar) -->
+  <div id="tab-churras" class="tab-content">
+    <div class="card">
+      <h2>🆕 Novo Churrasco</h2>
+      <div class="form-row two">
+        <input id="newChurrasName" type="text" placeholder="Nome (ex: Churras do Sábado)">
+        <input id="newChurrasDate" type="date">
+      </div>
+      <button class="btn btn-primary" onclick="criarChurras()">Criar Churrasco</button>
+    </div>
+
+    <div class="card">
+      <h2>📋 Churrasco Ativo</h2>
+      <div id="churrasAtivoInfo"></div>
+    </div>
+  </div>
+
+  <!-- Tab: Pessoas -->
+  <div id="tab-pessoas" class="tab-content" style="display:none;">
+    <div class="card">
+      <h2>➕ Adicionar Pessoa</h2>
+      <div class="form-row two">
+        <input id="newPersonName" type="text" placeholder="Nome">
+        <input id="newPersonPhone" type="text" placeholder="WhatsApp (ex: 11999998888)">
+      </div>
+
+      <div style="margin-top:14px;">
+        <label class="label">📸 Foto / Avatar</label>
+        <div class="avatar-tabs">
+          <button type="button" class="avatar-tab active" data-avatar-tab="auto">🎨 Gerar</button>
+          <button type="button" class="avatar-tab" data-avatar-tab="upload">📷 Upload</button>
+          <button type="button" class="avatar-tab" data-avatar-tab="url">🔗 URL</button>
+          <button type="button" class="avatar-tab" data-avatar-tab="emoji">😀 Emoji</button>
+        </div>
+
+        <div id="avatarPanel-auto" class="avatar-panel active">
+          <p class="hint">Avatar gerado com a inicial do nome e cor aleatória.</p>
+          <div id="avatarPreview" class="avatar-preview-circle">?</div>
+          <button type="button" class="btn btn-small btn-secondary" onclick="gerarNovaCor()" style="margin-top:8px;">🎲 Trocar Cor</button>
+        </div>
+
+        <div id="avatarPanel-upload" class="avatar-panel">
+          <p class="hint">Salve a foto do perfil do WhatsApp (segurar foto → salvar) e faça upload.</p>
+          <input id="newPersonPhotoFile" type="file" accept="image/*">
+          <div id="uploadPreview" class="photo-preview-box"></div>
+        </div>
+
+        <div id="avatarPanel-url" class="avatar-panel">
+          <p class="hint">Cole o link direto da imagem (ex: foto de perfil do WhatsApp Web).</p>
+          <input id="newPersonPhotoUrl" type="text" placeholder="https://...">
+          <button type="button" class="btn btn-small btn-secondary" onclick="previewUrl()" style="margin-top:8px;">👁️ Pré-visualizar</button>
+          <div id="urlPreview" class="photo-preview-box"></div>
+        </div>
+
+        <div id="avatarPanel-emoji" class="avatar-panel">
+          <p class="hint">Escolhe um emoji que representa a pessoa.</p>
+          <input id="newPersonEmoji" type="text" placeholder="🍺" maxlength="2" style="font-size:1.5em; text-align:center;">
+          <div class="emoji-suggestions">
+            <button type="button" class="emoji-btn" onclick="escolherEmoji('🍺')">🍺</button>
+            <button type="button" class="emoji-btn" onclick="escolherEmoji('🍖')">🍖</button>
+            <button type="button" class="emoji-btn" onclick="escolherEmoji('🔥')">🔥</button>
+            <button type="button" class="emoji-btn" onclick="escolherEmoji('😎')">😎</button>
+            <button type="button" class="emoji-btn" onclick="escolherEmoji('🤠')">🤠</button>
+            <button type="button" class="emoji-btn" onclick="escolherEmoji('👨')">👨</button>
+            <button type="button" class="emoji-btn" onclick="escolherEmoji('👩')">👩</button>
+            <button type="button" class="emoji-btn" onclick="escolherEmoji('🧔')">🧔</button>
+            <button type="button" class="emoji-btn" onclick="escolherEmoji('🥂')">🥂</button>
+            <button type="button" class="emoji-btn" onclick="escolherEmoji('⚽')">⚽</button>
+          </div>
+        </div>
+      </div>
+
+      <button class="btn btn-primary" onclick="adicionarPessoa()" style="margin-top:14px; width:100%;">✓ Adicionar Pessoa</button>
+    </div>
+
+    <div class="card">
+      <h2>👥 Participantes</h2>
+      <div id="peopleList" class="people-grid"></div>
+    </div>
+  </div>
+
+  <!-- Tab: Gastos -->
+  <div id="tab-gastos" class="tab-content" style="display:none;">
+    <div class="card">
+      <h2>🛒 Registrar Gasto</h2>
+      <div class="form-row two">
+        <input id="newItemName" type="text" placeholder="O que foi comprado (ex: Picanha)">
+        <input id="newItemValue" type="number" step="0.01" placeholder="Valor (R$)">
+      </div>
+      <div class="form-row">
+        <select id="newItemBuyer">
+          <option value="">Quem comprou?</option>
+        </select>
+      </div>
+      <button class="btn btn-primary" onclick="adicionarItem()">Adicionar Gasto</button>
+    </div>
+
+    <div class="card">
+      <h2>📝 Gastos do Churras</h2>
+      <div id="itemsList" class="item-list"></div>
+    </div>
+  </div>
+
+  <!-- Tab: Resumo -->
+  <div id="tab-resumo" class="tab-content" style="display:none;">
+    <div class="card">
+      <h2>📊 Resumo Financeiro</h2>
+      <div id="summaryStats" class="summary-grid"></div>
+    </div>
+
+    <div class="card">
+      <h2>💸 Quem Deve / Quem Recebe</h2>
+      <div id="balanceList"></div>
+    </div>
+  </div>
+
+  <!-- Tab: Histórico -->
+  <div id="tab-historico" class="tab-content" style="display:none;">
+    <div class="card">
+      <h2>📅 Churrascos Anteriores</h2>
+      <div id="historyList"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal de Pagamento -->
+<div id="payModal" class="modal">
+  <div class="modal-content">
+    <h3>💸 Confirmar Pagamento</h3>
+    <div id="payModalContent"></div>
+    <div>
+      <label class="label">Comprovante (cole link ou faça upload)</label>
+      <input id="receiptUrl" type="text" placeholder="Link do comprovante (opcional)">
+      <input id="receiptFile" type="file" accept="image/*" style="margin-top:8px;">
+      <div id="receiptPreview"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-danger" onclick="fecharModal('payModal')">Cancelar</button>
+      <button class="btn btn-whatsapp" onclick="enviarWhatsApp()">📱 Enviar WhatsApp</button>
+      <button class="btn btn-success" onclick="confirmarPagamento()">✓ Dar Baixa</button>
+    </div>
+  </div>
+</div>
+<script>
+// ============ ESTADO ============
+let state = {
+  pessoas: [],
+  churrascos: [],
+  churrasAtivo: null,
+  pagamentoAtual: null
+};
+
+// ============ STORAGE (API REST) ============
+const API_BASE = window.location.origin;
+let salvandoAgora = false;
+let salvarPendente = false;
+let ultimaAtualizacao = null;
+
+async function salvar() {
+  if (salvandoAgora) { salvarPendente = true; return; }
+  salvandoAgora = true;
+  try {
+    const r = await fetch(API_BASE + '/api/state', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ state })
+    });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const data = await r.json();
+    ultimaAtualizacao = data.updatedAt;
+    atualizarStatusConexao(true);
+  } catch(e) {
+    console.error('Erro ao salvar:', e);
+    atualizarStatusConexao(false);
+    alert('⚠️ Erro ao salvar. Verifica sua conexão e tenta de novo.');
+  } finally {
+    salvandoAgora = false;
+    if (salvarPendente) {
+      salvarPendente = false;
+      setTimeout(salvar, 100);
+    }
+  }
+}
+
+async function carregar() {
+  try {
+    const r = await fetch(API_BASE + '/api/state');
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const data = await r.json();
+    if (data.state) {
+      state = data.state;
+      ultimaAtualizacao = data.updatedAt;
+    }
+    atualizarStatusConexao(true);
+  } catch(e) {
+    console.error('Erro ao carregar:', e);
+    atualizarStatusConexao(false);
+  }
+  renderTudo();
+}
+
+async function verificarAtualizacoes() {
+  try {
+    const r = await fetch(API_BASE + '/api/state');
+    if (!r.ok) return;
+    const data = await r.json();
+    if (data.updatedAt && data.updatedAt !== ultimaAtualizacao) {
+      state = data.state;
+      ultimaAtualizacao = data.updatedAt;
+      renderTudo();
+    }
+    atualizarStatusConexao(true);
+  } catch(e) {
+    atualizarStatusConexao(false);
+  }
+}
+
+function atualizarStatusConexao(online) {
+  const el = document.getElementById('connStatus');
+  if (!el) return;
+  el.textContent = online ? '🟢 Online' : '🔴 Sem conexão';
+  el.style.color = online ? '#6ee7b7' : '#fca5a5';
+}
+
+setInterval(verificarAtualizacoes, 5000);
+
+// ============ UTILS ============
+const fmt = v => 'R$ ' + Number(v).toFixed(2).replace('.', ',');
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2,7);
+
+function getChurras() {
+  return state.churrascos.find(c => c.id === state.churrasAtivo);
+}
+
+// ============ TABS ============
+document.querySelectorAll('.tab').forEach(t => {
+  t.onclick = () => {
+    document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(x => x.style.display = 'none');
+    t.classList.add('active');
+    document.getElementById('tab-' + t.dataset.tab).style.display = 'block';
+    renderTudo();
+  };
+});
+
+// ============ CHURRASCOS ============
+function criarChurras() {
+  const nome = document.getElementById('newChurrasName').value.trim();
+  const data = document.getElementById('newChurrasDate').value;
+  if (!nome) { alert('Coloca um nome no churras!'); return; }
+
+  const dividas = {};
+  state.pessoas.forEach(p => { dividas[p.id] = p.dividaAcumulada || 0; });
+
+  const novo = {
+    id: uid(),
+    nome,
+    data: data || new Date().toISOString().slice(0,10),
+    ativo: true,
+    participantes: state.pessoas.map(p => p.id),
+    itens: [],
+    pagamentos: [],
+    dividasIniciais: dividas,
+    encerrado: false
+  };
+
+  state.churrascos.forEach(c => c.ativo = false);
+  state.churrascos.push(novo);
+  state.churrasAtivo = novo.id;
+
+  document.getElementById('newChurrasName').value = '';
+  document.getElementById('newChurrasDate').value = '';
+  salvar();
+  renderTudo();
+}
+
+function selecionarChurras(id) {
+  state.churrascos.forEach(c => c.ativo = c.id === id);
+  state.churrasAtivo = id;
+  salvar();
+  renderTudo();
+}
+
+function encerrarChurras() {
+  const c = getChurras();
+  if (!c) return;
+  if (!confirm('Encerrar este churras? Dívidas pendentes serão acumuladas para o próximo.')) return;
+
+  const balanco = calcularBalanco();
+  balanco.forEach(b => {
+    const pessoa = state.pessoas.find(p => p.id === b.pessoaId);
+    if (pessoa && b.saldoFinal < 0) {
+      pessoa.dividaAcumulada = Math.abs(b.saldoFinal);
+    } else if (pessoa) {
+      pessoa.dividaAcumulada = 0;
+    }
+  });
+
+  c.encerrado = true;
+  c.ativo = false;
+  state.churrasAtivo = null;
+  salvar();
+  renderTudo();
+  alert('Churras encerrado! Dívidas pendentes foram acumuladas.');
+}
+
+// ============ PESSOAS ============
+const AVATAR_COLORS = [
+  ['#ff6b35', '#f7b801'],
+  ['#667eea', '#764ba2'],
+  ['#f093fb', '#f5576c'],
+  ['#4facfe', '#00f2fe'],
+  ['#43e97b', '#38f9d7'],
+  ['#fa709a', '#fee140'],
+  ['#30cfd0', '#330867'],
+  ['#a8edea', '#fed6e3'],
+  ['#ff9a9e', '#fecfef'],
+  ['#84fab0', '#8fd3f4'],
+  ['#ffecd2', '#fcb69f'],
+  ['#ff6e7f', '#bfe9ff']
+];
+
+let avatarTipoSelecionado = 'auto';
+let avatarCorIdx = 0;
+
+document.querySelectorAll('.avatar-tab').forEach(t => {
+  t.onclick = () => {
+    document.querySelectorAll('.avatar-tab').forEach(x => x.classList.remove('active'));
+    document.querySelectorAll('.avatar-panel').forEach(x => x.classList.remove('active'));
+    t.classList.add('active');
+    document.getElementById('avatarPanel-' + t.dataset.avatarTab).classList.add('active');
+    avatarTipoSelecionado = t.dataset.avatarTab;
+  };
+});
+
+document.getElementById('newPersonName').addEventListener('input', atualizarPreviewAuto);
+
+function atualizarPreviewAuto() {
+  const nome = document.getElementById('newPersonName').value.trim();
+  const inicial = nome ? nome.charAt(0).toUpperCase() : '?';
+  const [c1, c2] = AVATAR_COLORS[avatarCorIdx];
+  const preview = document.getElementById('avatarPreview');
+  preview.style.background = `linear-gradient(135deg, ${c1}, ${c2})`;
+  preview.textContent = inicial;
+}
+
+function gerarNovaCor() {
+  avatarCorIdx = (avatarCorIdx + 1) % AVATAR_COLORS.length;
+  atualizarPreviewAuto();
+}
+
+function escolherEmoji(e) {
+  document.getElementById('newPersonEmoji').value = e;
+}
+
+function previewUrl() {
+  const url = document.getElementById('newPersonPhotoUrl').value.trim();
+  const box = document.getElementById('urlPreview');
+  if (!url) { box.innerHTML = ''; return; }
+  box.innerHTML = `<img src="${url}" onerror="this.parentNode.innerHTML='<p style=color:#fca5a5;>❌ Imagem não carregou.</p>'">`;
+}
+
+document.getElementById('newPersonPhotoFile').addEventListener('change', function(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    document.getElementById('uploadPreview').innerHTML = `<img src="${ev.target.result}">`;
+  };
+  reader.readAsDataURL(file);
+});
+
+function adicionarPessoa() {
+  const nome = document.getElementById('newPersonName').value.trim();
+  const telefone = document.getElementById('newPersonPhone').value.trim();
+  if (!nome) { alert('Nome obrigatório!'); return; }
+
+  let avatar = { tipo: 'auto', valor: nome.charAt(0).toUpperCase(), cor: avatarCorIdx };
+
+  if (avatarTipoSelecionado === 'upload') {
+    const img = document.querySelector('#uploadPreview img');
+    if (img) {
+      avatar = { tipo: 'foto', valor: img.src };
+    } else {
+      alert('Selecione uma imagem para upload, ou escolha outra opção de avatar.');
+      return;
+    }
+  } else if (avatarTipoSelecionado === 'url') {
+    const url = document.getElementById('newPersonPhotoUrl').value.trim();
+    if (url) {
+      avatar = { tipo: 'foto', valor: url };
+    } else {
+      alert('Cole o link da imagem ou escolha outra opção.');
+      return;
+    }
+  } else if (avatarTipoSelecionado === 'emoji') {
+    const emoji = document.getElementById('newPersonEmoji').value.trim();
+    if (emoji) {
+      avatar = { tipo: 'emoji', valor: emoji };
+    } else {
+      alert('Escolha um emoji ou outra opção.');
+      return;
+    }
+  }
+
+  state.pessoas.push({
+    id: uid(),
+    nome,
+    telefone,
+    avatar,
+    emoji: avatar.tipo === 'emoji' ? avatar.valor : nome.charAt(0).toUpperCase(),
+    dividaAcumulada: 0
+  });
+
+  const c = getChurras();
+  if (c && !c.encerrado) {
+    c.participantes.push(state.pessoas[state.pessoas.length-1].id);
+  }
+
+  document.getElementById('newPersonName').value = '';
+  document.getElementById('newPersonPhone').value = '';
+  document.getElementById('newPersonEmoji').value = '';
+  document.getElementById('newPersonPhotoUrl').value = '';
+  document.getElementById('newPersonPhotoFile').value = '';
+  document.getElementById('uploadPreview').innerHTML = '';
+  document.getElementById('urlPreview').innerHTML = '';
+  avatarCorIdx = (avatarCorIdx + 1) % AVATAR_COLORS.length;
+  atualizarPreviewAuto();
+
+  salvar();
+  renderTudo();
+}
+
+function renderAvatar(pessoa, tamanho = 56) {
+  const av = pessoa.avatar || { tipo: 'emoji', valor: pessoa.emoji || pessoa.nome.charAt(0).toUpperCase() };
+  if (av.tipo === 'foto') {
+    return `<div class="person-avatar" style="width:${tamanho}px;height:${tamanho}px;"><img src="${av.valor}" onerror="this.parentNode.innerHTML='${pessoa.nome.charAt(0).toUpperCase()}'"></div>`;
+  }
+  if (av.tipo === 'auto') {
+    const cor = AVATAR_COLORS[av.cor || 0];
+    return `<div class="person-avatar" style="width:${tamanho}px;height:${tamanho}px;background:linear-gradient(135deg,${cor[0]},${cor[1]});">${av.valor}</div>`;
+  }
+  return `<div class="person-avatar" style="width:${tamanho}px;height:${tamanho}px;">${av.valor}</div>`;
+}
+
+function renderAvatarInline(pessoa) {
+  const av = pessoa.avatar || { tipo: 'emoji', valor: pessoa.emoji || pessoa.nome.charAt(0).toUpperCase() };
+  if (av.tipo === 'foto') {
+    return `<img src="${av.valor}" class="avatar-inline">`;
+  }
+  if (av.tipo === 'auto') {
+    const cor = AVATAR_COLORS[av.cor || 0];
+    return `<span class="avatar-inline-mini" style="background:linear-gradient(135deg,${cor[0]},${cor[1]});">${av.valor}</span>`;
+  }
+  return `<span style="font-size:1.1em;">${av.valor}</span>`;
+}
+
+function removerPessoa(id) {
+  if (!confirm('Remover esta pessoa?')) return;
+  state.pessoas = state.pessoas.filter(p => p.id !== id);
+  state.churrascos.forEach(c => {
+    c.participantes = c.participantes.filter(pid => pid !== id);
+  });
+  salvar();
+  renderTudo();
+}
+
+// ============ ITENS ============
+function adicionarItem() {
+  const c = getChurras();
+  if (!c) { alert('Cria ou seleciona um churras primeiro!'); return; }
+  if (c.encerrado) { alert('Este churras já foi encerrado.'); return; }
+
+  const nome = document.getElementById('newItemName').value.trim();
+  const valor = parseFloat(document.getElementById('newItemValue').value);
+  const compradorId = document.getElementById('newItemBuyer').value;
+
+  if (!nome || !valor || !compradorId) { alert('Preenche tudo!'); return; }
+
+  c.itens.push({
+    id: uid(),
+    nome,
+    valor,
+    compradorId,
+    data: new Date().toISOString()
+  });
+
+  document.getElementById('newItemName').value = '';
+  document.getElementById('newItemValue').value = '';
+  document.getElementById('newItemBuyer').value = '';
+  salvar();
+  renderTudo();
+}
+
+function removerItem(id) {
+  const c = getChurras();
+  if (!c || c.encerrado) return;
+  if (!confirm('Remover este gasto?')) return;
+  c.itens = c.itens.filter(i => i.id !== id);
+  salvar();
+  renderTudo();
+}
+
+// ============ CÁLCULO DE BALANÇO ============
+function calcularBalanco() {
+  const c = getChurras();
+  if (!c) return [];
+
+  const participantes = c.participantes;
+  if (participantes.length === 0) return [];
+
+  const totalGasto = c.itens.reduce((s, i) => s + i.valor, 0);
+  const valorPorPessoa = totalGasto / participantes.length;
+
+  return participantes.map(pid => {
+    const pessoa = state.pessoas.find(p => p.id === pid);
+    if (!pessoa) return null;
+
+    const gastou = c.itens.filter(i => i.compradorId === pid).reduce((s, i) => s + i.valor, 0);
+    const dividaAnterior = (c.dividasIniciais && c.dividasIniciais[pid]) || 0;
+    const saldoBase = gastou - valorPorPessoa - dividaAnterior;
+    const pagou = c.pagamentos.filter(p => p.pessoaId === pid && p.confirmado).reduce((s, p) => s + p.valor, 0);
+    const saldoFinal = saldoBase + pagou;
+
+    return {
+      pessoaId: pid, pessoa, nome: pessoa.nome, telefone: pessoa.telefone,
+      gastou, deveria: valorPorPessoa, dividaAnterior, pagou, saldoFinal,
+      pagamentosPendentes: c.pagamentos.filter(p => p.pessoaId === pid && !p.confirmado)
+    };
+  }).filter(x => x);
+}
+
+// ============ PAGAMENTOS ============
+function abrirModalPagamento(pessoaId, valor) {
+  state.pagamentoAtual = { pessoaId, valor: Math.abs(valor) };
+  const pessoa = state.pessoas.find(p => p.id === pessoaId);
+  document.getElementById('payModalContent').innerHTML = `
+    <p>${renderAvatarInline(pessoa)} <strong>${pessoa.nome}</strong> precisa pagar <strong style="color:#f7b801;">${fmt(Math.abs(valor))}</strong></p>
+    <p style="font-size:0.85em; color:#a0aec0; margin-top:6px;">Anexa o comprovante e clica em "Dar Baixa" pra confirmar.</p>
+  `;
+  document.getElementById('receiptUrl').value = '';
+  document.getElementById('receiptFile').value = '';
+  document.getElementById('receiptPreview').innerHTML = '';
+  document.getElementById('payModal').classList.add('active');
+}
+
+function fecharModal(id) {
+  document.getElementById(id).classList.remove('active');
+}
+
+document.getElementById('receiptFile').addEventListener('change', function(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    document.getElementById('receiptPreview').innerHTML =
+      `<img src="${ev.target.result}" class="receipt-img" id="receiptPreviewImg">`;
+  };
+  reader.readAsDataURL(file);
+});
+
+function enviarWhatsApp() {
+  if (!state.pagamentoAtual) return;
+  const pessoa = state.pessoas.find(p => p.id === state.pagamentoAtual.pessoaId);
+  if (!pessoa.telefone) { alert('Esta pessoa não tem WhatsApp cadastrado!'); return; }
+
+  const c = getChurras();
+  const msg = encodeURIComponent(
+    `🔥 *Churras: ${c.nome}*\n\n` +
+    `Oi ${pessoa.nome}! Sua parte ficou em *${fmt(state.pagamentoAtual.valor)}*.\n\n` +
+    `Quando pagar, manda o comprovante por aqui pra dar baixa! 🍖`
+  );
+  const tel = pessoa.telefone.replace(/\D/g, '');
+  window.open(`https://wa.me/${tel}?text=${msg}`, '_blank');
+}
+
+function confirmarPagamento() {
+  if (!state.pagamentoAtual) return;
+  const c = getChurras();
+  if (!c) return;
+
+  const url = document.getElementById('receiptUrl').value;
+  const previewImg = document.getElementById('receiptPreviewImg');
+  const comprovante = previewImg ? previewImg.src : url;
+
+  c.pagamentos.push({
+    id: uid(),
+    pessoaId: state.pagamentoAtual.pessoaId,
+    valor: state.pagamentoAtual.valor,
+    comprovante,
+    confirmado: true,
+    data: new Date().toISOString()
+  });
+
+  fecharModal('payModal');
+  state.pagamentoAtual = null;
+  salvar();
+  renderTudo();
+  alert('Pagamento confirmado! ✓');
+}
+
+// ============ RENDER ============
+function renderChurrasTab() {
+  const c = getChurras();
+  const info = document.getElementById('churrasAtivoInfo');
+
+  if (!c) {
+    info.innerHTML = `<div class="empty"><div class="empty-icon">🍖</div>Nenhum churras ativo. Cria um novo aí em cima.</div>`;
+    return;
+  }
+
+  const total = c.itens.reduce((s,i) => s + i.valor, 0);
+  const porPessoa = c.participantes.length > 0 ? total / c.participantes.length : 0;
+
+  info.innerHTML = `
+    <div class="summary-grid">
+      <div class="summary-box"><div class="summary-label">Churras</div><div class="summary-value" style="font-size:1em;">${c.nome}</div></div>
+      <div class="summary-box"><div class="summary-label">Data</div><div class="summary-value" style="font-size:1em;">${new Date(c.data).toLocaleDateString('pt-BR')}</div></div>
+      <div class="summary-box"><div class="summary-label">Participantes</div><div class="summary-value">${c.participantes.length}</div></div>
+      <div class="summary-box"><div class="summary-label">Total Gasto</div><div class="summary-value">${fmt(total)}</div></div>
+      <div class="summary-box"><div class="summary-label">Por Pessoa</div><div class="summary-value">${fmt(porPessoa)}</div></div>
+      <div class="summary-box"><div class="summary-label">Status</div><div class="summary-value" style="font-size:1em;">${c.encerrado ? '🔒 Encerrado' : '✅ Ativo'}</div></div>
+    </div>
+    ${!c.encerrado ? `<button class="btn btn-danger" onclick="encerrarChurras()" style="margin-top:10px;">🔒 Encerrar Churras</button>` : ''}
+  `;
+}
+
+function renderPessoasTab() {
+  const list = document.getElementById('peopleList');
+  if (state.pessoas.length === 0) {
+    list.innerHTML = `<div class="empty" style="grid-column:1/-1;"><div class="empty-icon">👥</div>Nenhuma pessoa cadastrada ainda.</div>`;
+    return;
+  }
+  list.innerHTML = state.pessoas.map(p => {
+    const tem = (p.dividaAcumulada || 0) > 0;
+    return `
+      <div class="person-card">
+        <button class="remove-btn" onclick="removerPessoa('${p.id}')">×</button>
+        ${renderAvatar(p, 56)}
+        <div class="person-name">${p.nome}</div>
+        <div class="person-phone">${p.telefone || '—'}</div>
+        <div class="person-debt ${tem ? 'has-debt' : 'no-debt'}">
+          ${tem ? `Deve ${fmt(p.dividaAcumulada)}` : 'Em dia'}
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function renderGastosTab() {
+  const c = getChurras();
+  const sel = document.getElementById('newItemBuyer');
+  const participantes = c ? state.pessoas.filter(p => c.participantes.includes(p.id)) : [];
+  sel.innerHTML = '<option value="">Quem comprou?</option>' +
+    participantes.map(p => `<option value="${p.id}">${p.nome}</option>`).join('');
+
+  const list = document.getElementById('itemsList');
+  if (!c) {
+    list.innerHTML = `<div class="empty"><div class="empty-icon">🛒</div>Cria um churras pra registrar gastos.</div>`;
+    return;
+  }
+  if (c.itens.length === 0) {
+    list.innerHTML = `<div class="empty"><div class="empty-icon">🛒</div>Nenhum gasto registrado ainda.</div>`;
+    return;
+  }
+  list.innerHTML = c.itens.map(i => {
+    const comprador = state.pessoas.find(p => p.id === i.compradorId);
+    return `
+      <div class="item">
+        <div class="item-info">
+          <div class="item-name">${i.nome}</div>
+          <div class="item-meta">Comprou: ${comprador ? renderAvatarInline(comprador) + ' ' + comprador.nome : '—'}</div>
+        </div>
+        <div class="item-value">${fmt(i.valor)}</div>
+        ${!c.encerrado ? `<button class="btn btn-danger btn-small" onclick="removerItem('${i.id}')">Remover</button>` : ''}
+      </div>
+    `;
+  }).join('');
+}
+
+function renderResumoTab() {
+  const c = getChurras();
+  const stats = document.getElementById('summaryStats');
+  const balanceList = document.getElementById('balanceList');
+
+  if (!c) {
+    stats.innerHTML = '';
+    balanceList.innerHTML = `<div class="empty"><div class="empty-icon">📊</div>Cria um churras pra ver o resumo.</div>`;
+    return;
+  }
+
+  const total = c.itens.reduce((s,i) => s + i.valor, 0);
+  const porPessoa = c.participantes.length > 0 ? total / c.participantes.length : 0;
+  const balanco = calcularBalanco();
+  const totalPago = c.pagamentos.filter(p => p.confirmado).reduce((s,p) => s + p.valor, 0);
+  const pendente = balanco.filter(b => b.saldoFinal < 0).reduce((s,b) => s + Math.abs(b.saldoFinal), 0);
+
+  stats.innerHTML = `
+    <div class="summary-box"><div class="summary-label">Total Gasto</div><div class="summary-value">${fmt(total)}</div></div>
+    <div class="summary-box"><div class="summary-label">Por Pessoa</div><div class="summary-value">${fmt(porPessoa)}</div></div>
+    <div class="summary-box"><div class="summary-label">Já Pago</div><div class="summary-value" style="color:#6ee7b7;">${fmt(totalPago)}</div></div>
+    <div class="summary-box"><div class="summary-label">Pendente</div><div class="summary-value" style="color:#fca5a5;">${fmt(pendente)}</div></div>
+  `;
+
+  if (balanco.length === 0) {
+    balanceList.innerHTML = `<div class="empty"><div class="empty-icon">💸</div>Adiciona participantes e gastos.</div>`;
+    return;
+  }
+
+  balanceList.innerHTML = balanco.map(b => {
+    const deve = b.saldoFinal < 0;
+    const quitado = Math.abs(b.saldoFinal) < 0.01;
+    return `
+      <div class="balance-row">
+        <div class="balance-info">
+          <div class="balance-name">
+            ${renderAvatarInline(b.pessoa)} ${b.nome}
+            ${quitado ? '<span class="status-badge status-paid">QUITADO</span>' : (deve ? '<span class="status-badge status-pending">DEVENDO</span>' : '')}
+          </div>
+          <div class="balance-detail">
+            Gastou ${fmt(b.gastou)} • Cota ${fmt(b.deveria)}
+            ${b.dividaAnterior > 0 ? ` • Dívida anterior ${fmt(b.dividaAnterior)}` : ''}
+            ${b.pagou > 0 ? ` • Já pagou ${fmt(b.pagou)}` : ''}
+          </div>
+        </div>
+        <div class="balance-amount ${deve ? 'owes' : 'receives'}">
+          ${quitado ? '✓ Quitado' : (deve ? '− ' + fmt(Math.abs(b.saldoFinal)) : '+ ' + fmt(b.saldoFinal))}
+        </div>
+        <div class="balance-actions">
+          ${deve && !quitado && !c.encerrado ? `<button class="btn btn-success btn-small" onclick="abrirModalPagamento('${b.pessoaId}', ${b.saldoFinal})">💸 Pagar / Dar Baixa</button>` : ''}
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function renderHistoricoTab() {
+  const list = document.getElementById('historyList');
+  if (state.churrascos.length === 0) {
+    list.innerHTML = `<div class="empty"><div class="empty-icon">📅</div>Nenhum churras criado ainda.</div>`;
+    return;
+  }
+  const ordenados = [...state.churrascos].sort((a,b) => new Date(b.data) - new Date(a.data));
+  list.innerHTML = ordenados.map(c => {
+    const total = c.itens.reduce((s,i) => s + i.valor, 0);
+    return `
+      <div class="churras-card ${c.id === state.churrasAtivo ? 'active' : ''}" onclick="selecionarChurras('${c.id}')">
+        <div class="churras-header-row">
+          <div class="churras-title">🍖 ${c.nome}</div>
+          <div class="churras-date">${new Date(c.data).toLocaleDateString('pt-BR')}</div>
+        </div>
+        <div style="font-size:0.85em; color:#a0aec0;">
+          ${c.participantes.length} pessoas • ${c.itens.length} gastos • Total ${fmt(total)}
+          ${c.encerrado ? '<span class="status-badge status-paid">ENCERRADO</span>' : '<span class="status-badge status-pending">ATIVO</span>'}
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function renderTudo() {
+  renderChurrasTab();
+  renderPessoasTab();
+  renderGastosTab();
+  renderResumoTab();
+  renderHistoricoTab();
+}
+
+// Init
+document.getElementById('newChurrasDate').value = new Date().toISOString().slice(0,10);
+atualizarPreviewAuto();
+carregar();
+
+// ============ PWA ============
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/service-worker.js')
+      .then(r => console.log('✓ Service Worker registrado:', r.scope))
+      .catch(e => console.error('SW erro:', e));
+  });
+}
+
+let deferredPrompt = null;
+
+window.addEventListener('beforeinstallprompt', e => {
+  e.preventDefault();
+  deferredPrompt = e;
+  if (!localStorage.getItem('installBannerDismissed')) {
+    document.getElementById('installBanner').classList.add('show');
+  }
+});
+
+document.getElementById('installBtn').addEventListener('click', async () => {
+  if (!deferredPrompt) return;
+  deferredPrompt.prompt();
+  const { outcome } = await deferredPrompt.userChoice;
+  console.log('Instalação:', outcome);
+  deferredPrompt = null;
+  fecharBannerInstalacao();
+});
+
+function fecharBannerInstalacao() {
+  document.getElementById('installBanner').classList.remove('show');
+  document.getElementById('iosBanner').classList.remove('show');
+  localStorage.setItem('installBannerDismissed', Date.now());
+}
+
+function isIOS() {
+  return /iphone|ipad|ipod/i.test(navigator.userAgent) && !window.MSStream;
+}
+function isStandalone() {
+  return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+}
+
+window.addEventListener('load', () => {
+  const d = localStorage.getItem('installBannerDismissed');
+  if (d && Date.now() - parseInt(d) > 7 * 24 * 60 * 60 * 1000) {
+    localStorage.removeItem('installBannerDismissed');
+  }
+
+  if (isIOS() && !isStandalone() && !localStorage.getItem('installBannerDismissed')) {
+    setTimeout(() => {
+      document.getElementById('iosBanner').classList.add('show');
+    }, 3000);
+  }
+});
+
+window.addEventListener('appinstalled', () => {
+  console.log('✓ App instalado!');
+  fecharBannerInstalacao();
+});
+
+const params = new URLSearchParams(window.location.search);
+if (params.get('tab')) {
+  const tabBtn = document.querySelector(`.tab[data-tab="${params.get('tab')}"]`);
+  if (tabBtn) tabBtn.click();
+}
+</script>
+</body>
+</html>
