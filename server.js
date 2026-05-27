@@ -102,4 +102,13 @@ app.get('*', (req, res) => {
 // ============================================================
 // START
 // ============================================================
-i
+initDb()
+  .then(() => {
+    app.listen(PORT, () => {
+      console.log(`🔥 Servidor rodando na porta ${PORT}`);
+    });
+  })
+  .catch((err) => {
+    console.error('Falha ao inicializar o banco:', err);
+    process.exit(1);
+  });
