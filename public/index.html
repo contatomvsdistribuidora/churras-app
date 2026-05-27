@@ -487,9 +487,239 @@
     transition: all 0.15s;
   }
   .emoji-btn:hover { background: rgba(247,184,1,0.15); border-color: #f7b801; }
+
+  /* ============ AUTH SCREENS ============ */
+  .auth-screen {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+    padding: 24px 16px;
+    padding-top: max(24px, env(safe-area-inset-top));
+    padding-bottom: max(24px, env(safe-area-inset-bottom));
+    overflow-y: auto;
+    z-index: 300;
+  }
+  .auth-screen.show { display: flex; }
+  .auth-screen .auth-card {
+    width: 100%;
+    max-width: 420px;
+    margin: auto;
+    background: rgba(255,255,255,0.06);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 18px;
+    padding: 28px 22px;
+  }
+  .auth-logo {
+    text-align: center;
+    margin-bottom: 20px;
+  }
+  .auth-logo h1 {
+    font-size: 1.9em;
+    background: linear-gradient(45deg, #ff6b35, #f7b801, #ff6b35);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .auth-logo p { color: #a0aec0; font-size: 0.85em; margin-top: 4px; }
+  .auth-title {
+    font-size: 1.15em;
+    color: #f7b801;
+    margin-bottom: 16px;
+    text-align: center;
+  }
+  .auth-field { margin-bottom: 12px; }
+  .auth-field label {
+    display: block;
+    font-size: 0.82em;
+    color: #a0aec0;
+    margin-bottom: 6px;
+  }
+  .auth-error {
+    background: rgba(239,68,68,0.15);
+    border: 1px solid rgba(239,68,68,0.35);
+    color: #fca5a5;
+    padding: 10px 12px;
+    border-radius: 10px;
+    font-size: 0.85em;
+    margin-bottom: 12px;
+    display: none;
+  }
+  .auth-error.show { display: block; }
+  .auth-success {
+    background: rgba(16,185,129,0.15);
+    border: 1px solid rgba(16,185,129,0.35);
+    color: #6ee7b7;
+    padding: 10px 12px;
+    border-radius: 10px;
+    font-size: 0.85em;
+    margin-bottom: 12px;
+    display: none;
+  }
+  .auth-success.show { display: block; }
+  .auth-submit {
+    width: 100%;
+    margin-top: 6px;
+  }
+  .auth-switch {
+    text-align: center;
+    margin-top: 16px;
+    font-size: 0.85em;
+    color: #a0aec0;
+  }
+  .auth-switch a {
+    color: #f7b801;
+    text-decoration: none;
+    cursor: pointer;
+    font-weight: 600;
+  }
+  .auth-switch a:hover { text-decoration: underline; }
+  .auth-question-readonly {
+    background: rgba(247,184,1,0.1);
+    border: 1px solid rgba(247,184,1,0.3);
+    color: #f7b801;
+    padding: 10px 12px;
+    border-radius: 10px;
+    font-size: 0.9em;
+    margin-bottom: 12px;
+  }
+
+  /* botão Sair no header */
+  .header-actions {
+    position: absolute;
+    top: max(16px, env(safe-area-inset-top));
+    right: max(16px, env(safe-area-inset-right));
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+  .header-user {
+    font-size: 0.78em;
+    color: #a0aec0;
+  }
+  @media (max-width: 480px) {
+    .header-user { display: none; }
+  }
 </style>
 </head>
 <body>
+
+<!-- ============ AUTH: LOGIN ============ -->
+<div id="screen-login" class="auth-screen">
+  <div class="auth-card">
+    <div class="auth-logo">
+      <h1>🔥 Divide o Churras</h1>
+      <p>Entrar na sua conta</p>
+    </div>
+    <div id="login-error" class="auth-error"></div>
+    <form id="loginForm" autocomplete="on">
+      <div class="auth-field">
+        <label for="login-whatsapp">WhatsApp (com DDD)</label>
+        <input id="login-whatsapp" type="tel" inputmode="numeric" placeholder="11999998888" autocomplete="username" required>
+      </div>
+      <div class="auth-field">
+        <label for="login-password">Senha</label>
+        <input id="login-password" type="password" placeholder="••••••" autocomplete="current-password" required>
+      </div>
+      <button type="submit" class="btn btn-primary auth-submit">Entrar</button>
+    </form>
+    <div class="auth-switch">
+      <a onclick="mostrarTelaAuth('recover')">Esqueci minha senha</a>
+    </div>
+    <div class="auth-switch">
+      Ainda não tem conta? <a onclick="mostrarTelaAuth('register')">Criar conta</a>
+    </div>
+  </div>
+</div>
+
+<!-- ============ AUTH: REGISTER ============ -->
+<div id="screen-register" class="auth-screen">
+  <div class="auth-card">
+    <div class="auth-logo">
+      <h1>🔥 Divide o Churras</h1>
+      <p>Criar uma conta</p>
+    </div>
+    <div id="register-error" class="auth-error"></div>
+    <form id="registerForm" autocomplete="on">
+      <div class="auth-field">
+        <label for="register-whatsapp">WhatsApp (com DDD, só números)</label>
+        <input id="register-whatsapp" type="tel" inputmode="numeric" placeholder="11999998888" autocomplete="username" required>
+      </div>
+      <div class="auth-field">
+        <label for="register-password">Senha (mín. 6 caracteres)</label>
+        <input id="register-password" type="password" placeholder="••••••" autocomplete="new-password" required>
+      </div>
+      <div class="auth-field">
+        <label for="register-password2">Confirmar senha</label>
+        <input id="register-password2" type="password" placeholder="••••••" autocomplete="new-password" required>
+      </div>
+      <div class="auth-field">
+        <label for="register-question">Pergunta de segurança</label>
+        <select id="register-question" required>
+          <option value="">Escolha uma pergunta...</option>
+          <option>Nome do seu primeiro pet</option>
+          <option>Cidade onde você nasceu</option>
+          <option>Nome da rua onde você cresceu</option>
+          <option>Seu apelido de infância</option>
+          <option>Nome de solteira da sua mãe</option>
+          <option>Modelo do seu primeiro carro</option>
+          <option>Nome do seu melhor amigo de infância</option>
+        </select>
+      </div>
+      <div class="auth-field">
+        <label for="register-answer">Resposta da pergunta</label>
+        <input id="register-answer" type="text" placeholder="Sua resposta" autocomplete="off" required>
+      </div>
+      <button type="submit" class="btn btn-primary auth-submit">Criar conta</button>
+    </form>
+    <div class="auth-switch">
+      Já tem conta? <a onclick="mostrarTelaAuth('login')">Entrar</a>
+    </div>
+  </div>
+</div>
+
+<!-- ============ AUTH: RECUPERAÇÃO ============ -->
+<div id="screen-recover" class="auth-screen">
+  <div class="auth-card">
+    <div class="auth-logo">
+      <h1>🔥 Divide o Churras</h1>
+      <p>Recuperar senha</p>
+    </div>
+    <div id="recover-error" class="auth-error"></div>
+    <div id="recover-success" class="auth-success"></div>
+
+    <!-- Etapa 1: pede whatsapp -->
+    <form id="recoverStep1Form" autocomplete="off">
+      <div class="auth-field">
+        <label for="recover-whatsapp">WhatsApp da conta</label>
+        <input id="recover-whatsapp" type="tel" inputmode="numeric" placeholder="11999998888" required>
+      </div>
+      <button type="submit" class="btn btn-primary auth-submit">Buscar pergunta</button>
+    </form>
+
+    <!-- Etapa 2: mostra pergunta e pede resposta + nova senha -->
+    <form id="recoverStep2Form" style="display:none;" autocomplete="off">
+      <div class="auth-field">
+        <label>Pergunta de segurança</label>
+        <div id="recover-question" class="auth-question-readonly"></div>
+      </div>
+      <div class="auth-field">
+        <label for="recover-answer">Sua resposta</label>
+        <input id="recover-answer" type="text" autocomplete="off" required>
+      </div>
+      <div class="auth-field">
+        <label for="recover-newpass">Nova senha (mín. 6 caracteres)</label>
+        <input id="recover-newpass" type="password" autocomplete="new-password" required>
+      </div>
+      <button type="submit" class="btn btn-primary auth-submit">Trocar senha</button>
+    </form>
+
+    <div class="auth-switch">
+      <a onclick="mostrarTelaAuth('login')">Voltar para o login</a>
+    </div>
+  </div>
+</div>
 
 <!-- Banner de instalação PWA -->
 <div id="installBanner" class="install-banner">
@@ -512,8 +742,12 @@
   <button class="install-banner-close" onclick="fecharBannerInstalacao()">×</button>
 </div>
 
-<div class="container">
-  <header>
+<div class="container" id="appContainer" style="display:none;">
+  <div class="header-actions">
+    <span id="headerUser" class="header-user"></span>
+    <button id="logoutBtn" class="btn btn-danger btn-small" onclick="fazerLogout()">Sair</button>
+  </div>
+  <header style="position:relative;">
     <h1>🔥 Divide o Churras</h1>
     <p>Quem comprou, quem comeu — todo mundo paga sua parte</p>
     <p id="connStatus" style="font-size:0.8em; margin-top:6px;">🔄 Conectando...</p>
@@ -671,6 +905,148 @@
   </div>
 </div>
 <script>
+// ============ AUTH ============
+let usuarioLogado = null;
+const API = window.location.origin;
+
+function $(id) { return document.getElementById(id); }
+
+function normalizarWhatsapp(s) {
+  return String(s || '').replace(/\D/g, '');
+}
+
+function mostrarTelaAuth(qual) {
+  ['login', 'register', 'recover'].forEach(t => {
+    $('screen-' + t).classList.toggle('show', t === qual);
+  });
+  $('appContainer').style.display = 'none';
+  ['login-error', 'register-error', 'recover-error', 'recover-success'].forEach(id => {
+    const el = $(id); if (el) { el.classList.remove('show'); el.textContent = ''; }
+  });
+  if (qual === 'recover') {
+    $('recoverStep1Form').style.display = '';
+    $('recoverStep2Form').style.display = 'none';
+  }
+}
+
+function mostrarErroAuth(idErro, msg) {
+  const el = $(idErro);
+  el.textContent = msg;
+  el.classList.add('show');
+}
+
+function mostrarSucessoAuth(idOk, msg) {
+  const el = $(idOk);
+  el.textContent = msg;
+  el.classList.add('show');
+}
+
+async function chamarAuth(rota, body) {
+  const r = await fetch(API + rota, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify(body)
+  });
+  const data = await r.json().catch(() => ({}));
+  return { ok: r.ok, status: r.status, data };
+}
+
+async function entrarNoApp(user) {
+  usuarioLogado = user;
+  ['login', 'register', 'recover'].forEach(t => $('screen-' + t).classList.remove('show'));
+  $('appContainer').style.display = '';
+  $('headerUser').textContent = user.whatsapp ? '📱 ' + user.whatsapp : '';
+  await carregar();
+}
+
+async function bootAuth() {
+  try {
+    const r = await fetch(API + '/api/auth/me', { credentials: 'include' });
+    if (r.ok) {
+      const data = await r.json();
+      await entrarNoApp(data.user);
+      return;
+    }
+  } catch (_e) { /* fall through */ }
+  mostrarTelaAuth('login');
+}
+
+async function fazerLogout() {
+  try {
+    await fetch(API + '/api/auth/logout', { method: 'POST', credentials: 'include' });
+  } catch (_e) { /* ignore */ }
+  usuarioLogado = null;
+  state = { pessoas: [], churrascos: [], churrasAtivo: null, pagamentoAtual: null };
+  mostrarTelaAuth('login');
+}
+
+// Form: login
+document.addEventListener('DOMContentLoaded', () => {
+  $('loginForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    $('login-error').classList.remove('show');
+    const whatsapp = normalizarWhatsapp($('login-whatsapp').value);
+    const password = $('login-password').value;
+    if (whatsapp.length < 10) return mostrarErroAuth('login-error', 'WhatsApp inválido — informe com DDD');
+    if (!password) return mostrarErroAuth('login-error', 'Informe a senha');
+    const { ok, data } = await chamarAuth('/api/auth/login', { whatsapp, password });
+    if (!ok) return mostrarErroAuth('login-error', data.error || 'Não foi possível entrar');
+    $('login-password').value = '';
+    await entrarNoApp(data.user);
+  });
+
+  // Form: cadastro
+  $('registerForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    $('register-error').classList.remove('show');
+    const whatsapp = normalizarWhatsapp($('register-whatsapp').value);
+    const password = $('register-password').value;
+    const password2 = $('register-password2').value;
+    const securityQuestion = $('register-question').value;
+    const securityAnswer = $('register-answer').value.trim();
+    if (whatsapp.length < 10) return mostrarErroAuth('register-error', 'WhatsApp inválido — informe com DDD, só números');
+    if (password.length < 6) return mostrarErroAuth('register-error', 'Senha deve ter ao menos 6 caracteres');
+    if (password !== password2) return mostrarErroAuth('register-error', 'As senhas não conferem');
+    if (!securityQuestion) return mostrarErroAuth('register-error', 'Escolha uma pergunta de segurança');
+    if (!securityAnswer) return mostrarErroAuth('register-error', 'Responda a pergunta de segurança');
+    const { ok, data } = await chamarAuth('/api/auth/register', { whatsapp, password, securityQuestion, securityAnswer });
+    if (!ok) return mostrarErroAuth('register-error', data.error || 'Não foi possível criar a conta');
+    ['register-whatsapp', 'register-password', 'register-password2', 'register-answer'].forEach(id => $(id).value = '');
+    $('register-question').value = '';
+    await entrarNoApp(data.user);
+  });
+
+  // Form: recuperação etapa 1 (busca pergunta)
+  $('recoverStep1Form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    $('recover-error').classList.remove('show');
+    const whatsapp = normalizarWhatsapp($('recover-whatsapp').value);
+    if (whatsapp.length < 10) return mostrarErroAuth('recover-error', 'WhatsApp inválido');
+    const { ok, data } = await chamarAuth('/api/auth/recover/question', { whatsapp });
+    if (!ok) return mostrarErroAuth('recover-error', data.error || 'Erro ao buscar pergunta');
+    $('recover-question').textContent = data.securityQuestion;
+    $('recoverStep1Form').style.display = 'none';
+    $('recoverStep2Form').style.display = '';
+  });
+
+  // Form: recuperação etapa 2 (responde + nova senha)
+  $('recoverStep2Form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    $('recover-error').classList.remove('show');
+    $('recover-success').classList.remove('show');
+    const whatsapp = normalizarWhatsapp($('recover-whatsapp').value);
+    const securityAnswer = $('recover-answer').value.trim();
+    const newPassword = $('recover-newpass').value;
+    if (!securityAnswer) return mostrarErroAuth('recover-error', 'Responda a pergunta');
+    if (newPassword.length < 6) return mostrarErroAuth('recover-error', 'Nova senha deve ter ao menos 6 caracteres');
+    const { ok, data } = await chamarAuth('/api/auth/recover/reset', { whatsapp, securityAnswer, newPassword });
+    if (!ok) return mostrarErroAuth('recover-error', data.error || 'Não foi possível trocar a senha');
+    mostrarSucessoAuth('recover-success', '✓ Senha trocada! Faça login com a senha nova.');
+    setTimeout(() => mostrarTelaAuth('login'), 1500);
+  });
+});
+
 // ============ ESTADO ============
 let state = {
   pessoas: [],
@@ -685,6 +1061,15 @@ let salvandoAgora = false;
 let salvarPendente = false;
 let ultimaAtualizacao = null;
 
+function tratarSeNaoAutenticado(status) {
+  if (status === 401) {
+    usuarioLogado = null;
+    mostrarTelaAuth('login');
+    return true;
+  }
+  return false;
+}
+
 async function salvar() {
   if (salvandoAgora) { salvarPendente = true; return; }
   salvandoAgora = true;
@@ -692,8 +1077,10 @@ async function salvar() {
     const r = await fetch(API_BASE + '/api/state', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
       body: JSON.stringify({ state })
     });
+    if (tratarSeNaoAutenticado(r.status)) return;
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const data = await r.json();
     ultimaAtualizacao = data.updatedAt;
@@ -713,7 +1100,8 @@ async function salvar() {
 
 async function carregar() {
   try {
-    const r = await fetch(API_BASE + '/api/state');
+    const r = await fetch(API_BASE + '/api/state', { credentials: 'include' });
+    if (tratarSeNaoAutenticado(r.status)) return;
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const data = await r.json();
     if (data.state) {
@@ -729,8 +1117,10 @@ async function carregar() {
 }
 
 async function verificarAtualizacoes() {
+  if (!usuarioLogado) return;
   try {
-    const r = await fetch(API_BASE + '/api/state');
+    const r = await fetch(API_BASE + '/api/state', { credentials: 'include' });
+    if (tratarSeNaoAutenticado(r.status)) return;
     if (!r.ok) return;
     const data = await r.json();
     if (data.updatedAt && data.updatedAt !== ultimaAtualizacao) {
@@ -1298,7 +1688,7 @@ function renderTudo() {
 // Init
 document.getElementById('newChurrasDate').value = new Date().toISOString().slice(0,10);
 atualizarPreviewAuto();
-carregar();
+bootAuth();
 
 // ============ PWA ============
 if ('serviceWorker' in navigator) {
