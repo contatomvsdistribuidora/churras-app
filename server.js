@@ -47,24 +47,10 @@ app.use(express.static('public', {
 // SCHEMA
 // ============================================================
 async function initDb() {
-  // Legacy: estado único do app (mantido durante a transição)
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS app_state (
-      id INTEGER PRIMARY KEY DEFAULT 1,
-      data JSONB NOT NULL,
-      updated_at TIMESTAMP DEFAULT NOW(),
-      CONSTRAINT single_row CHECK (id = 1)
-    );
-  `);
-  const r = await pool.query('SELECT id FROM app_state WHERE id = 1');
-  if (r.rows.length === 0) {
-    await pool.query(
-      `INSERT INTO app_state (id, data) VALUES (1, $1)`,
-      [JSON.stringify({ pessoas: [], churrascos: [], churrasAtivo: null })]
-    );
-  }
+  // app_state legacy descontinuado na Fase 3 — frontend já saiu do blob global
+  await pool.query(`DROP TABLE IF EXISTS app_state;`);
 
-  // Multi-tenant: usuários
+  // Usuários (sua conta criada na Fase 2 fica intacta)
   await pool.query(`
     CREATE TABLE IF NOT EXISTS users (
       id SERIAL PRIMARY KEY,
@@ -72,50 +58,59 @@ async function initDb() {
       password_hash TEXT NOT NULL,
       security_question TEXT NOT NULL,
       security_answer_hash TEXT NOT NULL,
+      ui_state JSONB NOT NULL DEFAULT '{}',
       created_at TIMESTAMP DEFAULT NOW()
     );
   `);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS ui_state JSONB NOT NULL DEFAULT '{}';`);
 
-  // Pessoas pertencentes a cada usuário (id TEXT preserva os ids
-  // gerados pelo frontend via uid(), evitando remapeamento na migração)
+  // user_people e churrascos vão receber PK composta — schema novo.
+  // Em prod estão vazias (nada escrevia nelas até agora), então drop é seguro.
+  // CASCADE garante que churras_editors cai junto.
+  await pool.query(`DROP TABLE IF EXISTS churras_editors;`);
+  await pool.query(`DROP TABLE IF EXISTS user_people;`);
+  await pool.query(`DROP TABLE IF EXISTS churrascos;`);
+
+  // PK composta (user_id, id) — ids gerados pelo client (uid()) ficam
+  // isolados por usuário, eliminando risco de colisão cross-user.
   await pool.query(`
-    CREATE TABLE IF NOT EXISTS user_people (
-      id TEXT PRIMARY KEY,
+    CREATE TABLE user_people (
       user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      id TEXT NOT NULL,
       nome TEXT NOT NULL,
       telefone TEXT,
       avatar JSONB,
       emoji TEXT,
-      divida_acumulada NUMERIC(10,2) DEFAULT 0
+      divida_acumulada NUMERIC(10,2) NOT NULL DEFAULT 0,
+      PRIMARY KEY (user_id, id)
     );
   `);
-  await pool.query(`CREATE INDEX IF NOT EXISTS idx_user_people_user ON user_people(user_id);`);
 
-  // Churrascos (id TEXT pela mesma razão acima)
+  // churrascos.id continua único global para suportar URLs públicas /churras/:id (Fase 4)
   await pool.query(`
-    CREATE TABLE IF NOT EXISTS churrascos (
+    CREATE TABLE churrascos (
       id TEXT PRIMARY KEY,
       owner_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       nome TEXT NOT NULL,
       data DATE,
       dados JSONB NOT NULL,
-      encerrado BOOLEAN DEFAULT FALSE,
+      encerrado BOOLEAN NOT NULL DEFAULT FALSE,
+      ativo BOOLEAN NOT NULL DEFAULT FALSE,
       created_at TIMESTAMP DEFAULT NOW(),
       updated_at TIMESTAMP DEFAULT NOW()
     );
   `);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_churrascos_owner ON churrascos(owner_user_id);`);
 
-  // Permissões de edição
   await pool.query(`
-    CREATE TABLE IF NOT EXISTS churras_editors (
+    CREATE TABLE churras_editors (
       churras_id TEXT NOT NULL REFERENCES churrascos(id) ON DELETE CASCADE,
       user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       PRIMARY KEY (churras_id, user_id)
     );
   `);
 
-  console.log('✓ Schema sincronizado');
+  console.log('✓ Schema sincronizado (Fase 3 multi-tenant)');
 }
 
 // ============================================================
@@ -305,38 +300,187 @@ app.post('/api/auth/recover/reset', async (req, res) => {
 });
 
 // ============================================================
-// LEGACY API (mantida durante a transição multi-tenant)
+// STATE API (multi-tenant — Fase 3)
 // ============================================================
 app.get('/api/health', (req, res) => res.json({ ok: true, time: new Date() }));
 
-app.get('/api/state', async (req, res) => {
+// Monta o blob de estado esperado pelo frontend a partir das tabelas
+// do usuário logado. Mantém a mesma wire shape do legacy:
+//   { state: { pessoas, churrascos, churrasAtivo, pagamentoAtual }, updatedAt }
+app.get('/api/state', requireAuth, async (req, res) => {
   try {
-    const r = await pool.query('SELECT data, updated_at FROM app_state WHERE id = 1');
-    res.json({ state: r.rows[0].data, updatedAt: r.rows[0].updated_at });
+    const userId = req.user.id;
+    const [peopleR, churrasR, userR] = await Promise.all([
+      pool.query(
+        `SELECT id, nome, telefone, avatar, emoji, divida_acumulada
+         FROM user_people WHERE user_id = $1 ORDER BY nome`,
+        [userId]
+      ),
+      pool.query(
+        `SELECT id, nome, data, dados, encerrado, ativo, updated_at
+         FROM churrascos WHERE owner_user_id = $1 ORDER BY created_at`,
+        [userId]
+      ),
+      pool.query(`SELECT ui_state FROM users WHERE id = $1`, [userId])
+    ]);
+
+    const pessoas = peopleR.rows.map(p => ({
+      id: p.id,
+      nome: p.nome,
+      telefone: p.telefone || '',
+      avatar: p.avatar || null,
+      emoji: p.emoji || null,
+      dividaAcumulada: Number(p.divida_acumulada) || 0
+    }));
+
+    const churrascos = churrasR.rows.map(c => {
+      const d = c.dados || {};
+      return {
+        id: c.id,
+        nome: c.nome,
+        data: c.data,
+        ativo: !!c.ativo,
+        encerrado: !!c.encerrado,
+        participantes: d.participantes || [],
+        itens: d.itens || [],
+        pagamentos: d.pagamentos || [],
+        dividasIniciais: d.dividasIniciais || {}
+      };
+    });
+
+    const ui = (userR.rows[0] && userR.rows[0].ui_state) || {};
+    const updatedAt = churrasR.rows.reduce(
+      (max, c) => (c.updated_at > max ? c.updated_at : max),
+      new Date(0)
+    );
+
+    res.json({
+      state: {
+        pessoas,
+        churrascos,
+        churrasAtivo: ui.churrasAtivo || null,
+        pagamentoAtual: ui.pagamentoAtual || null
+      },
+      updatedAt
+    });
   } catch (e) {
     console.error('GET /api/state error:', e);
     res.status(500).json({ error: e.message });
   }
 });
 
-app.put('/api/state', async (req, res) => {
-  try {
-    const { state } = req.body;
-    if (!state) return res.status(400).json({ error: 'state obrigatório' });
-    await pool.query(
-      `UPDATE app_state SET data = $1, updated_at = NOW() WHERE id = 1`,
-      [JSON.stringify(state)]
+// Full-replace transacional dos dados do usuário. Valida cross-user
+// (id de churras pertencente a outro user → 403) antes de qualquer
+// escrita. Pessoas usam PK composta (user_id, id) então colisão
+// cross-user é impossível por construção.
+app.put('/api/state', requireAuth, async (req, res) => {
+  const userId = req.user.id;
+  const { state } = req.body || {};
+  if (!state || typeof state !== 'object') {
+    return res.status(400).json({ error: 'state obrigatório' });
+  }
+  const pessoas = Array.isArray(state.pessoas) ? state.pessoas : [];
+  const churrascos = Array.isArray(state.churrascos) ? state.churrascos : [];
+
+  // Validação cross-user: qualquer churras.id enviado precisa OU pertencer
+  // a este user OU não existir em lugar nenhum. Se pertence a outro user → 403.
+  const ids = churrascos.map(c => String(c.id)).filter(Boolean);
+  if (ids.length > 0) {
+    const conflict = await pool.query(
+      `SELECT id FROM churrascos WHERE id = ANY($1::text[]) AND owner_user_id <> $2 LIMIT 1`,
+      [ids, userId]
     );
+    if (conflict.rows.length > 0) {
+      return res.status(403).json({
+        error: 'tentativa de escrever em churras de outro usuário',
+        churrasId: conflict.rows[0].id
+      });
+    }
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    // pessoas: full replace (PK composta isola por user)
+    await client.query(`DELETE FROM user_people WHERE user_id = $1`, [userId]);
+    for (const p of pessoas) {
+      if (!p || !p.id) continue;
+      await client.query(
+        `INSERT INTO user_people (user_id, id, nome, telefone, avatar, emoji, divida_acumulada)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [
+          userId,
+          String(p.id),
+          String(p.nome || ''),
+          p.telefone || null,
+          p.avatar ? JSON.stringify(p.avatar) : null,
+          p.emoji || null,
+          Number(p.dividaAcumulada) || 0
+        ]
+      );
+    }
+
+    // churrascos: upsert dos enviados + delete dos que sumiram
+    for (const c of churrascos) {
+      if (!c || !c.id) continue;
+      const dados = {
+        participantes: c.participantes || [],
+        itens: c.itens || [],
+        pagamentos: c.pagamentos || [],
+        dividasIniciais: c.dividasIniciais || {}
+      };
+      await client.query(
+        `INSERT INTO churrascos (id, owner_user_id, nome, data, dados, encerrado, ativo, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+         ON CONFLICT (id) DO UPDATE SET
+           nome = EXCLUDED.nome,
+           data = EXCLUDED.data,
+           dados = EXCLUDED.dados,
+           encerrado = EXCLUDED.encerrado,
+           ativo = EXCLUDED.ativo,
+           updated_at = NOW()
+         WHERE churrascos.owner_user_id = $2`,
+        [
+          String(c.id),
+          userId,
+          String(c.nome || 'Churras'),
+          c.data || null,
+          JSON.stringify(dados),
+          !!c.encerrado,
+          !!c.ativo
+        ]
+      );
+    }
+
+    if (ids.length > 0) {
+      await client.query(
+        `DELETE FROM churrascos WHERE owner_user_id = $1 AND id <> ALL($2::text[])`,
+        [userId, ids]
+      );
+    } else {
+      await client.query(`DELETE FROM churrascos WHERE owner_user_id = $1`, [userId]);
+    }
+
+    // ui_state: persiste preferências/UI transitória
+    const uiState = {
+      churrasAtivo: state.churrasAtivo || null,
+      pagamentoAtual: state.pagamentoAtual || null
+    };
+    await client.query(
+      `UPDATE users SET ui_state = $1 WHERE id = $2`,
+      [JSON.stringify(uiState), userId]
+    );
+
+    await client.query('COMMIT');
     res.json({ ok: true, updatedAt: new Date() });
   } catch (e) {
+    await client.query('ROLLBACK').catch(() => {});
     console.error('PUT /api/state error:', e);
     res.status(500).json({ error: e.message });
+  } finally {
+    client.release();
   }
-});
-
-// Stub usado nos próximos commits; já exposto pra checar autenticação no client
-app.get('/api/me/ping', requireAuth, (req, res) => {
-  res.json({ ok: true, userId: req.user.id });
 });
 
 // ============================================================
