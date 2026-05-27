@@ -340,98 +340,6 @@ app.get('/api/me/ping', requireAuth, (req, res) => {
 });
 
 // ============================================================
-// MIGRAÇÃO (idempotente, disparada por env vars)
-// ============================================================
-async function migrateLegacyIfRequested() {
-  const whatsapp = normalizeWhatsapp(process.env.MIGRATE_WHATSAPP);
-  const password = process.env.MIGRATE_PASSWORD;
-
-  if (!whatsapp || !password) {
-    console.log('• Migração legacy: pulada (defina MIGRATE_WHATSAPP e MIGRATE_PASSWORD para ativar)');
-    return;
-  }
-
-  const existing = await pool.query('SELECT id FROM users WHERE whatsapp = $1', [whatsapp]);
-  if (existing.rows.length > 0) {
-    console.log(`• Migração legacy: pulada (user ${whatsapp} já existe — id=${existing.rows[0].id})`);
-    return;
-  }
-
-  const stateRow = await pool.query('SELECT data FROM app_state WHERE id = 1');
-  const legacy = stateRow.rows[0] && stateRow.rows[0].data;
-  if (!legacy) {
-    console.log('• Migração legacy: pulada (app_state vazio)');
-    return;
-  }
-
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-
-    const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
-    const answerHash = await bcrypt.hash('changeme', BCRYPT_ROUNDS);
-    const u = await client.query(
-      `INSERT INTO users (whatsapp, password_hash, security_question, security_answer_hash)
-       VALUES ($1, $2, $3, $4) RETURNING id`,
-      [whatsapp, passwordHash, 'Migração inicial — troque a pergunta nas configurações', answerHash]
-    );
-    const userId = u.rows[0].id;
-
-    const pessoas = Array.isArray(legacy.pessoas) ? legacy.pessoas : [];
-    for (const p of pessoas) {
-      await client.query(
-        `INSERT INTO user_people (id, user_id, nome, telefone, avatar, emoji, divida_acumulada)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
-         ON CONFLICT (id) DO NOTHING`,
-        [
-          String(p.id),
-          userId,
-          p.nome || '',
-          p.telefone || null,
-          p.avatar ? JSON.stringify(p.avatar) : null,
-          p.emoji || null,
-          Number(p.dividaAcumulada) || 0
-        ]
-      );
-    }
-
-    const churrascos = Array.isArray(legacy.churrascos) ? legacy.churrascos : [];
-    for (const c of churrascos) {
-      const dados = {
-        participantes: c.participantes || [],
-        itens: c.itens || [],
-        pagamentos: c.pagamentos || [],
-        dividasIniciais: c.dividasIniciais || {},
-        ativo: !!c.ativo
-      };
-      await client.query(
-        `INSERT INTO churrascos (id, owner_user_id, nome, data, dados, encerrado)
-         VALUES ($1, $2, $3, $4, $5, $6)
-         ON CONFLICT (id) DO NOTHING`,
-        [
-          String(c.id),
-          userId,
-          c.nome || 'Churras',
-          c.data || null,
-          JSON.stringify(dados),
-          !!c.encerrado
-        ]
-      );
-    }
-
-    await client.query('COMMIT');
-    console.log(`✓ Migração legacy concluída: user #${userId} (${whatsapp}), ${pessoas.length} pessoas, ${churrascos.length} churrascos`);
-    console.log('  ⚠️  Senha de recuperação temporária = "changeme". Troque a pergunta nas configurações assim que possível.');
-  } catch (e) {
-    await client.query('ROLLBACK');
-    console.error('✗ Migração legacy abortada (rollback):', e);
-    throw e;
-  } finally {
-    client.release();
-  }
-}
-
-// ============================================================
 // FALLBACK SPA
 // ============================================================
 app.get('*', (req, res) => {
@@ -442,7 +350,6 @@ app.get('*', (req, res) => {
 // START
 // ============================================================
 initDb()
-  .then(migrateLegacyIfRequested)
   .then(() => {
     app.listen(PORT, () => {
       console.log(`🔥 Servidor rodando na porta ${PORT}`);
