@@ -5,28 +5,38 @@ const express = require('express');
 const { Pool } = require('pg');
 const cors = require('cors');
 const path = require('path');
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
+const cookieParser = require('cookie-parser');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const JWT_SECRET = process.env.JWT_SECRET;
+const IS_PROD = process.env.NODE_ENV === 'production';
+const COOKIE_NAME = 'churras_token';
+const COOKIE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000; // 30 dias
+const BCRYPT_ROUNDS = 10;
 
-// Railway disponibiliza DATABASE_URL automaticamente
+if (!JWT_SECRET) {
+  console.error('FATAL: variável de ambiente JWT_SECRET não definida.');
+  console.error('Defina JWT_SECRET no Railway (ex: openssl rand -hex 32) antes de subir.');
+  process.exit(1);
+}
+
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : false
 });
 
 app.use(cors());
-// Permite uploads grandes (comprovantes em base64)
 app.use(express.json({ limit: '10mb' }));
+app.use(cookieParser());
 
-// Configuração estática com headers apropriados para PWA
 app.use(express.static('public', {
   setHeaders: (res, filePath) => {
-    // Service worker não deve ser cacheado (sempre buscar a versão mais nova)
     if (filePath.endsWith('service-worker.js')) {
       res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
     }
-    // Manifest com MIME type correto
     if (filePath.endsWith('manifest.json')) {
       res.setHeader('Content-Type', 'application/manifest+json');
     }
@@ -34,9 +44,10 @@ app.use(express.static('public', {
 }));
 
 // ============================================================
-// SETUP DO BANCO (cria tabela se não existir)
+// SCHEMA
 // ============================================================
 async function initDb() {
+  // Legacy: estado único do app (mantido durante a transição)
   await pool.query(`
     CREATE TABLE IF NOT EXISTS app_state (
       id INTEGER PRIMARY KEY DEFAULT 1,
@@ -45,8 +56,6 @@ async function initDb() {
       CONSTRAINT single_row CHECK (id = 1)
     );
   `);
-
-  // Garante que existe pelo menos uma linha
   const r = await pool.query('SELECT id FROM app_state WHERE id = 1');
   if (r.rows.length === 0) {
     await pool.query(
@@ -54,31 +63,262 @@ async function initDb() {
       [JSON.stringify({ pessoas: [], churrascos: [], churrasAtivo: null })]
     );
   }
-  console.log('✓ Banco inicializado');
+
+  // Multi-tenant: usuários
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS users (
+      id SERIAL PRIMARY KEY,
+      whatsapp VARCHAR(20) UNIQUE NOT NULL,
+      password_hash TEXT NOT NULL,
+      security_question TEXT NOT NULL,
+      security_answer_hash TEXT NOT NULL,
+      created_at TIMESTAMP DEFAULT NOW()
+    );
+  `);
+
+  // Pessoas pertencentes a cada usuário (id TEXT preserva os ids
+  // gerados pelo frontend via uid(), evitando remapeamento na migração)
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS user_people (
+      id TEXT PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      nome TEXT NOT NULL,
+      telefone TEXT,
+      avatar JSONB,
+      emoji TEXT,
+      divida_acumulada NUMERIC(10,2) DEFAULT 0
+    );
+  `);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_user_people_user ON user_people(user_id);`);
+
+  // Churrascos (id TEXT pela mesma razão acima)
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS churrascos (
+      id TEXT PRIMARY KEY,
+      owner_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      nome TEXT NOT NULL,
+      data DATE,
+      dados JSONB NOT NULL,
+      encerrado BOOLEAN DEFAULT FALSE,
+      created_at TIMESTAMP DEFAULT NOW(),
+      updated_at TIMESTAMP DEFAULT NOW()
+    );
+  `);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_churrascos_owner ON churrascos(owner_user_id);`);
+
+  // Permissões de edição
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS churras_editors (
+      churras_id TEXT NOT NULL REFERENCES churrascos(id) ON DELETE CASCADE,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      PRIMARY KEY (churras_id, user_id)
+    );
+  `);
+
+  console.log('✓ Schema sincronizado');
 }
 
 // ============================================================
-// API
+// AUTH HELPERS
 // ============================================================
+function normalizeWhatsapp(raw) {
+  if (typeof raw !== 'string') return '';
+  return raw.replace(/\D/g, '');
+}
 
-// Health check
+function signToken(user) {
+  return jwt.sign({ sub: user.id, whatsapp: user.whatsapp }, JWT_SECRET, { expiresIn: '30d' });
+}
+
+function setAuthCookie(res, token) {
+  res.cookie(COOKIE_NAME, token, {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: IS_PROD,
+    maxAge: COOKIE_MAX_AGE_MS,
+    path: '/'
+  });
+}
+
+function clearAuthCookie(res) {
+  res.clearCookie(COOKIE_NAME, { path: '/' });
+}
+
+async function loadUserFromRequest(req) {
+  const token = req.cookies && req.cookies[COOKIE_NAME];
+  if (!token) return null;
+  let payload;
+  try {
+    payload = jwt.verify(token, JWT_SECRET);
+  } catch (_e) {
+    return null;
+  }
+  const r = await pool.query(
+    'SELECT id, whatsapp, security_question, created_at FROM users WHERE id = $1',
+    [payload.sub]
+  );
+  return r.rows[0] || null;
+}
+
+async function requireAuth(req, res, next) {
+  try {
+    const user = await loadUserFromRequest(req);
+    if (!user) return res.status(401).json({ error: 'não autenticado' });
+    req.user = user;
+    next();
+  } catch (e) {
+    console.error('requireAuth error:', e);
+    res.status(500).json({ error: e.message });
+  }
+}
+
+// ============================================================
+// AUTH ENDPOINTS
+// ============================================================
+app.post('/api/auth/register', async (req, res) => {
+  try {
+    const { password, securityQuestion, securityAnswer } = req.body || {};
+    const whatsapp = normalizeWhatsapp(req.body && req.body.whatsapp);
+
+    if (!whatsapp || whatsapp.length < 10) {
+      return res.status(400).json({ error: 'whatsapp inválido (informe com DDD, só números)' });
+    }
+    if (!password || password.length < 6) {
+      return res.status(400).json({ error: 'senha deve ter ao menos 6 caracteres' });
+    }
+    if (!securityQuestion || !securityAnswer) {
+      return res.status(400).json({ error: 'pergunta e resposta de segurança obrigatórias' });
+    }
+
+    const existing = await pool.query('SELECT id FROM users WHERE whatsapp = $1', [whatsapp]);
+    if (existing.rows.length > 0) {
+      return res.status(409).json({ error: 'já existe uma conta com esse whatsapp' });
+    }
+
+    const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
+    const answerHash = await bcrypt.hash(String(securityAnswer).trim().toLowerCase(), BCRYPT_ROUNDS);
+
+    const r = await pool.query(
+      `INSERT INTO users (whatsapp, password_hash, security_question, security_answer_hash)
+       VALUES ($1, $2, $3, $4)
+       RETURNING id, whatsapp, security_question, created_at`,
+      [whatsapp, passwordHash, securityQuestion, answerHash]
+    );
+    const user = r.rows[0];
+    setAuthCookie(res, signToken(user));
+    res.status(201).json({ user });
+  } catch (e) {
+    console.error('POST /api/auth/register error:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/auth/login', async (req, res) => {
+  try {
+    const { password } = req.body || {};
+    const whatsapp = normalizeWhatsapp(req.body && req.body.whatsapp);
+    if (!whatsapp || !password) {
+      return res.status(400).json({ error: 'whatsapp e senha obrigatórios' });
+    }
+    const r = await pool.query(
+      'SELECT id, whatsapp, password_hash, security_question, created_at FROM users WHERE whatsapp = $1',
+      [whatsapp]
+    );
+    const row = r.rows[0];
+    if (!row) return res.status(401).json({ error: 'whatsapp ou senha incorretos' });
+
+    const ok = await bcrypt.compare(password, row.password_hash);
+    if (!ok) return res.status(401).json({ error: 'whatsapp ou senha incorretos' });
+
+    const user = {
+      id: row.id,
+      whatsapp: row.whatsapp,
+      security_question: row.security_question,
+      created_at: row.created_at
+    };
+    setAuthCookie(res, signToken(user));
+    res.json({ user });
+  } catch (e) {
+    console.error('POST /api/auth/login error:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/auth/logout', (req, res) => {
+  clearAuthCookie(res);
+  res.json({ ok: true });
+});
+
+app.get('/api/auth/me', async (req, res) => {
+  try {
+    const user = await loadUserFromRequest(req);
+    if (!user) return res.status(401).json({ error: 'não autenticado' });
+    res.json({ user });
+  } catch (e) {
+    console.error('GET /api/auth/me error:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Etapa 1 do fluxo de recuperação: dado um whatsapp, devolve a pergunta de segurança
+app.post('/api/auth/recover/question', async (req, res) => {
+  try {
+    const whatsapp = normalizeWhatsapp(req.body && req.body.whatsapp);
+    if (!whatsapp) return res.status(400).json({ error: 'whatsapp obrigatório' });
+    const r = await pool.query('SELECT security_question FROM users WHERE whatsapp = $1', [whatsapp]);
+    if (r.rows.length === 0) return res.status(404).json({ error: 'whatsapp não encontrado' });
+    res.json({ securityQuestion: r.rows[0].security_question });
+  } catch (e) {
+    console.error('POST /api/auth/recover/question error:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Etapa 2: responde a pergunta e define nova senha
+app.post('/api/auth/recover/reset', async (req, res) => {
+  try {
+    const { securityAnswer, newPassword } = req.body || {};
+    const whatsapp = normalizeWhatsapp(req.body && req.body.whatsapp);
+    if (!whatsapp || !securityAnswer || !newPassword) {
+      return res.status(400).json({ error: 'whatsapp, resposta e nova senha obrigatórios' });
+    }
+    if (newPassword.length < 6) {
+      return res.status(400).json({ error: 'nova senha deve ter ao menos 6 caracteres' });
+    }
+    const r = await pool.query(
+      'SELECT id, security_answer_hash FROM users WHERE whatsapp = $1',
+      [whatsapp]
+    );
+    const row = r.rows[0];
+    if (!row) return res.status(404).json({ error: 'whatsapp não encontrado' });
+
+    const ok = await bcrypt.compare(String(securityAnswer).trim().toLowerCase(), row.security_answer_hash);
+    if (!ok) return res.status(401).json({ error: 'resposta incorreta' });
+
+    const newHash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
+    await pool.query('UPDATE users SET password_hash = $1 WHERE id = $2', [newHash, row.id]);
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('POST /api/auth/recover/reset error:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ============================================================
+// LEGACY API (mantida durante a transição multi-tenant)
+// ============================================================
 app.get('/api/health', (req, res) => res.json({ ok: true, time: new Date() }));
 
-// GET /api/state - retorna todo o estado
 app.get('/api/state', async (req, res) => {
   try {
     const r = await pool.query('SELECT data, updated_at FROM app_state WHERE id = 1');
-    res.json({
-      state: r.rows[0].data,
-      updatedAt: r.rows[0].updated_at
-    });
+    res.json({ state: r.rows[0].data, updatedAt: r.rows[0].updated_at });
   } catch (e) {
     console.error('GET /api/state error:', e);
     res.status(500).json({ error: e.message });
   }
 });
 
-// PUT /api/state - salva o estado inteiro
 app.put('/api/state', async (req, res) => {
   try {
     const { state } = req.body;
@@ -94,7 +334,106 @@ app.put('/api/state', async (req, res) => {
   }
 });
 
-// Fallback - serve index.html para qualquer rota não-API
+// Stub usado nos próximos commits; já exposto pra checar autenticação no client
+app.get('/api/me/ping', requireAuth, (req, res) => {
+  res.json({ ok: true, userId: req.user.id });
+});
+
+// ============================================================
+// MIGRAÇÃO (idempotente, disparada por env vars)
+// ============================================================
+async function migrateLegacyIfRequested() {
+  const whatsapp = normalizeWhatsapp(process.env.MIGRATE_WHATSAPP);
+  const password = process.env.MIGRATE_PASSWORD;
+
+  if (!whatsapp || !password) {
+    console.log('• Migração legacy: pulada (defina MIGRATE_WHATSAPP e MIGRATE_PASSWORD para ativar)');
+    return;
+  }
+
+  const existing = await pool.query('SELECT id FROM users WHERE whatsapp = $1', [whatsapp]);
+  if (existing.rows.length > 0) {
+    console.log(`• Migração legacy: pulada (user ${whatsapp} já existe — id=${existing.rows[0].id})`);
+    return;
+  }
+
+  const stateRow = await pool.query('SELECT data FROM app_state WHERE id = 1');
+  const legacy = stateRow.rows[0] && stateRow.rows[0].data;
+  if (!legacy) {
+    console.log('• Migração legacy: pulada (app_state vazio)');
+    return;
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
+    const answerHash = await bcrypt.hash('changeme', BCRYPT_ROUNDS);
+    const u = await client.query(
+      `INSERT INTO users (whatsapp, password_hash, security_question, security_answer_hash)
+       VALUES ($1, $2, $3, $4) RETURNING id`,
+      [whatsapp, passwordHash, 'Migração inicial — troque a pergunta nas configurações', answerHash]
+    );
+    const userId = u.rows[0].id;
+
+    const pessoas = Array.isArray(legacy.pessoas) ? legacy.pessoas : [];
+    for (const p of pessoas) {
+      await client.query(
+        `INSERT INTO user_people (id, user_id, nome, telefone, avatar, emoji, divida_acumulada)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
+         ON CONFLICT (id) DO NOTHING`,
+        [
+          String(p.id),
+          userId,
+          p.nome || '',
+          p.telefone || null,
+          p.avatar ? JSON.stringify(p.avatar) : null,
+          p.emoji || null,
+          Number(p.dividaAcumulada) || 0
+        ]
+      );
+    }
+
+    const churrascos = Array.isArray(legacy.churrascos) ? legacy.churrascos : [];
+    for (const c of churrascos) {
+      const dados = {
+        participantes: c.participantes || [],
+        itens: c.itens || [],
+        pagamentos: c.pagamentos || [],
+        dividasIniciais: c.dividasIniciais || {},
+        ativo: !!c.ativo
+      };
+      await client.query(
+        `INSERT INTO churrascos (id, owner_user_id, nome, data, dados, encerrado)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         ON CONFLICT (id) DO NOTHING`,
+        [
+          String(c.id),
+          userId,
+          c.nome || 'Churras',
+          c.data || null,
+          JSON.stringify(dados),
+          !!c.encerrado
+        ]
+      );
+    }
+
+    await client.query('COMMIT');
+    console.log(`✓ Migração legacy concluída: user #${userId} (${whatsapp}), ${pessoas.length} pessoas, ${churrascos.length} churrascos`);
+    console.log('  ⚠️  Senha de recuperação temporária = "changeme". Troque a pergunta nas configurações assim que possível.');
+  } catch (e) {
+    await client.query('ROLLBACK');
+    console.error('✗ Migração legacy abortada (rollback):', e);
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+
+// ============================================================
+// FALLBACK SPA
+// ============================================================
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
@@ -103,12 +442,13 @@ app.get('*', (req, res) => {
 // START
 // ============================================================
 initDb()
+  .then(migrateLegacyIfRequested)
   .then(() => {
     app.listen(PORT, () => {
       console.log(`🔥 Servidor rodando na porta ${PORT}`);
     });
   })
   .catch((err) => {
-    console.error('Falha ao inicializar o banco:', err);
+    console.error('Falha ao inicializar:', err);
     process.exit(1);
   });
